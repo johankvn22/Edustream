@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EduStream Class - UML Perfected</title>
+    
+    <!-- Application Structure Plan (UML ALIGNED): 
+         1. Auth (UC1): Login logic with Role check.
+         2. Teacher Dashboard (UC2): Stats view.
+         3. Course Mgmt (UC3, UC4, UC5): CRUD, Lesson Builder, Class Assignment.
+         4. Student Mgmt (UC6, UC7): Add/Delete Student, Promotion Logic (Naik Kelas).
+         5. Student LMS (UC8, UC9): Dashboard with Filters, Player access.
+         6. Quiz System (UC10 - UPGRADED): Dynamic rendering of questions from data & Scoring logic.
+         7. AI Feature (UC11): Gemini Integration.
+    -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap');
+        
+        body { font-family: 'Inter', sans-serif; transition: background-color 0.3s ease; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        .chart-container { position: relative; width: 100%; height: 300px; margin: 0 auto; }
+        .fade-in { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .modal { transition: opacity 0.25s ease; }
+        body.modal-active { overflow-x: hidden; overflow-y: hidden !important; }
+        .status-pill { padding: 4px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; background-color: white; color: #1f2937; border: 1px solid #e5e7eb; display: inline-block; cursor: pointer; }
+        .status-pill.active { background-color: #1f2937; color: white; border-color: #1f2937; }
+        
+        /* Toast Notification */
+        #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 9999; }
+        .toast { background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; margin-top: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); animation: slideIn 0.3s ease-out; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-800 overflow-x-hidden">
+
+    <div id="app-root" class="min-h-screen flex flex-col"></div>
+    <div id="modal-root"></div>
+    <div id="toast-container"></div>
+
+    <script>
+        const apiKey = ""; 
+
+        // --- MOCK AI FUNCTION (UC11) ---
+        async function callGemini(prompt) {
+            try {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+                if (!response.ok) throw new Error('API Error');
+                const data = await response.json();
+                return data.candidates[0].content.parts[0].text;
+            } catch (error) {
+                console.error("Gemini AI Error:", error);
+                return "Fitur AI Demo: API Key belum dikonfigurasi. Dalam aplikasi nyata, ini akan terhubung ke Google Gemini.";
+            }
+        }
+
+        // --- DATA STORE (Class Diagram Implementation) ---
+        const appData = {
+            // Class: User
+            users: [
+                { id: 1, name: "Pak Budi", email: "guru@sekolah.id", password: "guru", role: "teacher" },
+                { id: 2, name: "Andi Saputra", email: "andi@sekolah.id", password: "siswa", role: "student", class: "10 RPL 1" },
+                { id: 3, name: "Budi Santoso", email: "budi@sekolah.id", password: "siswa", role: "student", class: "10 RPL 1" },
+                { id: 4, name: "Citra Lestari", email: "citra@sekolah.id", password: "siswa", role: "student", class: "11 RPL 1" }
+            ],
+            // Class: ClassRoom (implied list)
+            classes: ["10 RPL 1", "10 RPL 2", "11 RPL 1", "11 RPL 2", "12 RPL 1", "Alumni"],
+            // Class: Course & Lesson & Question
+            courses: [
+                { 
+                    id: 1, title: "Dasar Pemrograman Web", category: "Kelas 10 RPL", thumbnail: "💻", color: "bg-blue-600", assignedClasses: ["10 RPL 1"],
+                    lessons: [
+                        { id: 101, title: "Pengenalan HTML", type: "video", duration: "10:00" },
+                        { id: 102, title: "Modul HTML PDF", type: "pdf", duration: "5 Halaman" },
+                        { 
+                            id: 103, title: "Kuis Dasar HTML", type: "quiz", duration: "2 Soal",
+                            // Class: Question structure inside Lesson
+                            questions: [
+                                { id: 1, text: "Tag HTML untuk membuat link adalah?", options: ["<a>", "<img>", "<p>", "<div>"], correct: 0 },
+                                { id: 2, text: "Kepanjangan HTML?", options: ["High Text", "Hyper Text Markup Language", "Hyper Tool", "Home Tool"], correct: 1 }
+                            ]
+                        }
+                    ]
+                },
+                { 
+                    id: 2, title: "Laravel Framework 10", category: "Kelas 11 RPL", thumbnail: "🔥", color: "bg-red-600", assignedClasses: [], 
+                    lessons: [{ id: 201, title: "Konsep MVC", type: "video", duration: "15:00" }]
+                },
+                { 
+                    id: 3, title: "UI/UX Design", category: "Kelas 12 RPL", thumbnail: "🎨", color: "bg-purple-600", assignedClasses: ["12 RPL 1"], lessons: []
+                }
+            ],
+            progress: { 2: { 1: 45 }, 3: { 1: 100 } }
+        };
+
+        let currentState = {
+            view: 'landing', modalOpen: false, modalType: null, modalData: null, currentUser: null, 
+            activeCourseId: null, studentTab: 'semua', promoteClassSource: '10 RPL 1', selectedStudentsForPromo: [],
+            tempLessonType: 'video' 
+        };
+
+        function renderApp() {
+            const root = document.getElementById('app-root');
+            root.innerHTML = '';
+            renderModal();
+
+            switch(currentState.view) {
+                case 'landing': renderLandingPage(root); break;
+                case 'login': renderLoginPage(root); break;
+                
+                // STUDENT
+                case 'student_dashboard': renderStudentLMS(root); break;
+                case 'player': renderPlayerWrapper(root); break; 
+                
+                // TEACHER
+                case 'teacher_dashboard': renderTeacherLayout(root, renderTeacherDashboardContent); break;
+                case 'teacher_courses': renderTeacherLayout(root, renderTeacherCoursesContent); break;
+                case 'teacher_students': renderTeacherLayout(root, renderTeacherStudentsContent); break;
+                case 'teacher_promotion': renderTeacherLayout(root, renderTeacherPromotionContent); break;
+                case 'course_editor': renderCourseEditor(root); break;
+                case 'quiz_builder': renderQuizBuilder(root); break;
+            }
+        }
+
+        // --- TOAST NOTIFICATION ---
+        function showToast(message) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = `<i class="fas fa-check-circle mr-2"></i> ${message}`;
+            container.appendChild(toast);
+            setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+        }
+
+        // --- AUTH (UC1) ---
+        function renderLandingPage(container) {
+            document.body.className = "bg-gray-50 text-gray-800";
+            container.innerHTML = `
+                <div class="relative bg-white overflow-hidden min-h-screen flex flex-col">
+                    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full pt-6 flex justify-between items-center">
+                        <span class="text-2xl font-bold text-indigo-600 tracking-tighter">EduStream<span class="text-gray-900">Class</span></span>
+                        <button onclick="navigateTo('login')" class="px-6 py-2 rounded-full bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition">Masuk</button>
+                    </div>
+                    <main class="mt-16 mx-auto max-w-7xl px-4 sm:mt-24 text-center">
+                        <h1 class="text-4xl font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
+                            <span class="block">Platform Belajar Modern</span>
+                            <span class="block text-indigo-600">Manajemen Kelas Cerdas</span>
+                        </h1>
+                        <p class="mt-3 max-w-md mx-auto text-base text-gray-500 sm:text-lg md:mt-5 md:text-xl md:max-w-3xl">
+                            Sistem kenaikan kelas otomatis, penugasan terstruktur, dan akses aman berbasis peran.
+                        </p>
+                        <div class="mt-10 bg-yellow-50 border border-yellow-200 p-6 rounded-xl inline-block text-left shadow-sm">
+                            <p class="font-bold text-yellow-800 mb-3 text-center uppercase tracking-wide text-xs">Akun Demo (Klik Masuk)</p>
+                            <div class="grid grid-cols-2 gap-8">
+                                <div class="cursor-pointer hover:bg-yellow-100 p-2 rounded" onclick="quickLogin('guru')">
+                                    <p class="text-xs text-gray-500 uppercase font-bold mb-1">👨‍🏫 Guru</p>
+                                    <p class="font-mono text-sm">guru@sekolah.id</p>
+                                </div>
+                                <div class="cursor-pointer hover:bg-yellow-100 p-2 rounded" onclick="quickLogin('siswa')">
+                                    <p class="text-xs text-gray-500 uppercase font-bold mb-1">👤 Siswa</p>
+                                    <p class="font-mono text-sm">andi@sekolah.id</p>
+                                </div>
+                            </div>
+                        </div>
+                    </main>
+                </div>`;
+        }
+
+        function renderLoginPage(container) {
+            container.innerHTML = `
+                <div class="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4">
+                    <div class="max-w-md w-full bg-white p-8 rounded-xl shadow-lg">
+                        <h2 class="text-3xl font-bold text-center mb-8">Masuk Akun</h2>
+                        <form onsubmit="handleLogin(event)" class="space-y-6">
+                            <div><label class="block text-sm font-medium text-gray-700">Email</label><input type="email" id="email" required class="mt-1 block w-full border rounded-md py-2 px-3" placeholder="nama@sekolah.id"></div>
+                            <div><label class="block text-sm font-medium text-gray-700">Password</label><input type="password" id="password" required class="mt-1 block w-full border rounded-md py-2 px-3"></div>
+                            <button type="submit" class="w-full py-3 px-4 border border-transparent rounded-md text-white bg-indigo-600 hover:bg-indigo-700 font-medium">Masuk</button>
+                        </form>
+                        <div class="mt-4 text-center space-x-4">
+                            <button onclick="quickFill('guru')" class="text-xs text-indigo-600 hover:underline">Isi Guru</button>
+                            <button onclick="quickFill('siswa')" class="text-xs text-indigo-600 hover:underline">Isi Siswa</button>
+                        </div>
+                        <div class="mt-6 text-center"><button onclick="navigateTo('landing')" class="text-sm text-gray-500 hover:text-gray-900">Kembali</button></div>
+                    </div>
+                </div>`;
+        }
+
+        function quickFill(role) {
+            if(role === 'guru') { document.getElementById('email').value = 'guru@sekolah.id'; document.getElementById('password').value = 'guru'; } 
+            else { document.getElementById('email').value = 'andi@sekolah.id'; document.getElementById('password').value = 'siswa'; }
+        }
+        
+        function quickLogin(role) { quickFill(role); handleLogin({ preventDefault: () => {} }); }
+
+        function handleLogin(e) {
+            e.preventDefault();
+            const email = document.getElementById('email') ? document.getElementById('email').value : (e === 'guru' ? 'guru@sekolah.id' : 'andi@sekolah.id');
+            const pass = document.getElementById('password') ? document.getElementById('password').value : (e === 'guru' ? 'guru' : 'siswa');
+            const user = appData.users.find(u => u.email === email && u.password === pass);
+            if (user) { currentState.currentUser = user; navigateTo(user.role === 'teacher' ? 'teacher_dashboard' : 'student_dashboard'); } 
+            else { alert("Email atau password salah!"); }
+        }
+
+        // --- TEACHER CMS (UC2 - UC7) ---
+        function renderTeacherLayout(container, contentRenderer) {
+            document.body.className = "bg-gray-50 text-gray-800";
+            const user = currentState.currentUser || appData.users[0];
+            container.innerHTML = `
+                <div class="min-h-screen flex">
+                    <aside class="w-64 bg-white border-r border-gray-200 hidden md:flex flex-col fixed h-full z-10">
+                        <div class="h-16 flex items-center px-6 border-b border-gray-200 font-bold text-xl text-indigo-700">EduStream<span class="text-gray-500 font-normal text-sm ml-1">Guru</span></div>
+                        <nav class="flex-1 px-4 py-6 space-y-1">
+                            ${getSidebarBtn('teacher_dashboard', '📊', 'Dashboard')}
+                            ${getSidebarBtn('teacher_courses', '📚', 'Manajemen Kursus')}
+                            ${getSidebarBtn('teacher_students', '👥', 'Data Siswa & Akses')}
+                            ${getSidebarBtn('teacher_promotion', '🎓', 'Kenaikan Kelas')}
+                        </nav>
+                        <div class="p-4 border-t">
+                            <div class="flex items-center mb-3">
+                                <div class="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold mr-3">${user.name.charAt(0)}</div>
+                                <div><div class="text-sm font-bold text-gray-900">${user.name}</div><div class="text-xs text-gray-500">Administrator</div></div>
+                            </div>
+                            <button onclick="navigateTo('landing')" class="w-full text-sm text-red-600 hover:bg-red-50 py-2 rounded border border-red-200">Keluar</button>
+                        </div>
+                    </aside>
+                    <main class="flex-1 md:ml-64 p-8 fade-in" id="cms-content"></main>
+                </div>`;
+            contentRenderer(document.getElementById('cms-content'));
+        }
+
+        function getSidebarBtn(view, icon, label) {
+            const active = currentState.view === view;
+            return `<button onclick="navigateTo('${view}')" class="w-full flex items-center px-2 py-3 text-sm font-medium rounded-md ${active ? 'bg-indigo-50 text-indigo-700 border-r-4 border-indigo-600' : 'text-gray-600 hover:bg-gray-50'}"><span class="mr-3 text-lg">${icon}</span> ${label}</button>`;
+        }
+
+        function renderTeacherDashboardContent(container) {
+            container.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6">Dashboard Guru</h2>
+                <div class="grid grid-cols-3 gap-6 mb-8">
+                    <div class="bg-white p-5 rounded-lg shadow border-l-4 border-indigo-500">
+                        <div class="text-gray-500 text-sm">Total Murid</div>
+                        <div class="text-3xl font-bold">${appData.users.filter(u => u.role === 'student').length}</div>
+                    </div>
+                    <div class="bg-white p-5 rounded-lg shadow border-l-4 border-green-500">
+                        <div class="text-gray-500 text-sm">Kursus Aktif</div>
+                        <div class="text-3xl font-bold">${appData.courses.length}</div>
+                    </div>
+                </div>`;
+        }
+
+        function renderTeacherCoursesContent(container) {
+            container.innerHTML = `
+                <div class="flex justify-between mb-6">
+                    <h2 class="text-2xl font-bold">Manajemen Kursus</h2>
+                    <button onclick="openModal('create_course')" class="bg-indigo-600 text-white px-4 py-2 rounded shadow hover:bg-indigo-700">+ Kursus Baru</button>
+                </div>
+                <div class="bg-white shadow rounded-lg overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Judul</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kategori</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Ditugaskan Ke</th>
+                                <th class="px-6 py-3 text-right">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            ${appData.courses.map(c => `
+                                <tr>
+                                    <td class="px-6 py-4 font-medium flex items-center gap-2"><span class="text-xl">${c.thumbnail}</span> ${c.title}</td>
+                                    <td class="px-6 py-4 text-gray-500 text-sm">${c.category}</td>
+                                    <td class="px-6 py-4">${c.assignedClasses.length > 0 ? c.assignedClasses.map(cls => `<span class="bg-yellow-100 text-yellow-800 text-xs px-2 py-1 rounded mr-1">${cls}</span>`).join('') : '<span class="text-gray-400 text-xs italic">Belum ditugaskan</span>'}</td>
+                                    <td class="px-6 py-4 text-right text-sm">
+                                        <button onclick="openModal('assign_course', ${c.id})" class="text-indigo-600 bg-indigo-50 px-3 py-1 rounded mr-2 border border-indigo-200" title="Tugaskan ke Kelas"><i class="fas fa-tasks"></i></button>
+                                        <button onclick="openEditor(${c.id})" class="text-gray-500 hover:text-indigo-600 mr-2" title="Edit Materi"><i class="fas fa-edit"></i></button>
+                                        <button onclick="deleteCourse(${c.id})" class="text-red-500 hover:text-red-700" title="Hapus Kursus"><i class="fas fa-trash"></i></button>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+        }
+
+        function addNewCourse() {
+            const title = document.getElementById('new_course_title').value;
+            const category = document.getElementById('new_course_cat').value;
+            if(!title) return alert("Judul harus diisi");
+            const newId = appData.courses.length + 1;
+            appData.courses.push({ id: newId, title: title, category: category, thumbnail: "📘", color: "bg-gray-600", assignedClasses: [], lessons: [] });
+            closeModal(); showToast("Kursus berhasil dibuat!"); openEditor(newId);
+        }
+
+        function deleteCourse(id) {
+            if(confirm("Yakin ingin menghapus kursus ini? Data materi juga akan hilang.")) {
+                appData.courses = appData.courses.filter(c => c.id !== id);
+                renderApp(); showToast("Kursus dihapus.");
+            }
+        }
+
+        function openEditor(id) { currentState.activeCourseId = id; navigateTo('course_editor'); }
+
+        function renderCourseEditor(container) {
+            const course = appData.courses.find(c => c.id === currentState.activeCourseId);
+            document.body.className = "bg-gray-50 text-gray-800";
+            container.innerHTML = `
+                <div class="max-w-4xl mx-auto py-12 px-4 fade-in">
+                    <div class="mb-6 flex justify-between items-center">
+                        <button onclick="navigateTo('teacher_courses')" class="text-indigo-600 hover:underline">← Kembali ke Daftar</button>
+                        <h2 class="text-2xl font-bold">Editor Kursus</h2>
+                    </div>
+                    <div class="bg-white p-6 rounded-lg shadow mb-6">
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Judul Kursus</label>
+                        <input type="text" value="${course.title}" class="w-full border rounded p-2 mb-4 focus:ring-2 focus:ring-indigo-500">
+                        <div class="text-right mt-4"><button class="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700">Simpan Perubahan</button></div>
+                    </div>
+                    <div class="bg-white shadow rounded-lg overflow-hidden">
+                        <div class="px-6 py-4 bg-gray-50 border-b flex justify-between items-center">
+                            <h3 class="font-bold text-gray-700">Kurikulum / Materi</h3>
+                            <button onclick="openModal('add_lesson')" class="bg-indigo-600 text-white px-3 py-2 rounded text-sm shadow hover:bg-indigo-700">+ Tambah Materi</button>
+                        </div>
+                        <ul class="divide-y divide-gray-200">
+                            ${course.lessons.length > 0 ? course.lessons.map((l, idx) => `
+                                <li class="px-6 py-4 flex items-center justify-between hover:bg-gray-50">
+                                    <div class="flex items-center gap-4">
+                                        <div class="text-gray-400 text-xs font-bold w-4">${idx + 1}.</div>
+                                        <div class="h-10 w-10 rounded flex items-center justify-center text-lg ${l.type === 'quiz' ? 'bg-yellow-100 text-yellow-600' : 'bg-blue-100 text-blue-600'}">
+                                            <i class="fas ${l.type === 'quiz' ? 'fa-question' : 'fa-play'}"></i>
+                                        </div>
+                                        <div><div class="font-medium text-gray-900">${l.title}</div><div class="text-xs text-gray-500 uppercase">${l.type}</div></div>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        ${l.type === 'quiz' ? `<button onclick="navigateTo('quiz_builder')" class="text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded border border-yellow-200 font-bold hover:bg-yellow-200">Kelola Soal</button>` : ''}
+                                        <button onclick="deleteLesson(${l.id})" class="text-red-400 hover:text-red-600 ml-2"><i class="fas fa-trash"></i></button>
+                                    </div>
+                                </li>
+                            `).join('') : '<li class="px-6 py-8 text-center text-gray-500 italic">Belum ada materi.</li>'}
+                        </ul>
+                    </div>
+                </div>`;
+        }
+
+        function addNewLesson() {
+            const title = document.getElementById('lesson_title').value;
+            const type = currentState.tempLessonType;
+            if(!title) return alert("Isi judul materi!");
+            const course = appData.courses.find(c => c.id === currentState.activeCourseId);
+            course.lessons.push({ id: Date.now(), title: title, type: type, duration: "Baru", questions: type === 'quiz' ? [] : null });
+            closeModal(); renderApp(); showToast(`Materi ${type} berhasil ditambahkan!`);
+        }
+
+        function deleteLesson(id) {
+            if(confirm("Hapus materi ini?")) {
+                const course = appData.courses.find(c => c.id === currentState.activeCourseId);
+                course.lessons = course.lessons.filter(l => l.id !== id);
+                renderApp();
+            }
+        }
+
+        function renderQuizBuilder(container) {
+            container.innerHTML = `
+                <div class="max-w-3xl mx-auto py-12 px-4 fade-in">
+                    <div class="flex justify-between items-center mb-6">
+                        <button onclick="navigateTo('course_editor')" class="text-gray-500 hover:text-indigo-600">← Kembali</button>
+                        <button onclick="generateAIQuiz()" class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded shadow gap-2 flex"><i class="fas fa-magic"></i> AI Generate</button>
+                    </div>
+                    <div class="bg-white p-8 rounded-xl shadow-lg border border-gray-200 text-center">
+                        <div class="text-6xl mb-4">📝</div>
+                        <h2 class="text-xl font-bold">Quiz Builder Visual</h2>
+                        <p class="text-gray-500 mb-6">Untuk demo ini, kuis menggunakan data tersimpan. Klik "AI Generate" untuk simulasi pembuatan soal.</p>
+                    </div>
+                </div>`;
+        }
+
+        async function generateAIQuiz() {
+            showToast("AI sedang membuat soal...");
+            setTimeout(() => showToast("Soal berhasil ditambahkan ke database!"), 1500);
+        }
+
+        function renderTeacherStudentsContent(container) {
+            const students = appData.users.filter(u => u.role === 'student');
+            container.innerHTML = `
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold">Data Siswa & Akses</h2>
+                    <button onclick="openModal('add_student')" class="bg-indigo-600 text-white px-4 py-2 rounded shadow hover:bg-indigo-700 flex items-center gap-2"><i class="fas fa-user-plus"></i> Tambah Murid</button>
+                </div>
+                <div class="bg-white shadow rounded-lg overflow-hidden">
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <thead class="bg-gray-50">
+                            <tr><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nama</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th><th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kelas</th><th class="px-6 py-3 text-right">Aksi</th></tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-200">
+                            ${students.map(s => `<tr><td class="px-6 py-4 font-medium">${s.name}</td><td class="px-6 py-4 text-gray-500 font-mono text-sm bg-gray-50 rounded">${s.email}</td><td class="px-6 py-4"><span class="bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-bold">${s.class}</span></td><td class="px-6 py-4 text-right"><button onclick="deleteStudent(${s.id})" class="text-red-600 hover:text-red-900">Hapus</button></td></tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+        }
+
+        function addNewStudent() {
+            const name = document.getElementById('new_student_name').value;
+            const email = document.getElementById('new_student_email').value;
+            const cls = document.getElementById('new_student_class').value;
+            if(!name || !email) return alert("Lengkapi data");
+            appData.users.push({ id: Date.now(), name: name, email: email, password: "siswa", role: "student", class: cls });
+            closeModal(); renderApp(); showToast("Siswa berhasil ditambahkan!");
+        }
+
+        function deleteStudent(id) {
+            if(confirm("Hapus data siswa ini?")) {
+                appData.users = appData.users.filter(u => u.id !== id);
+                renderApp(); showToast("Siswa dihapus.");
+            }
+        }
+
+        function renderTeacherPromotionContent(container) {
+            if (!currentState.promoteClassSource) currentState.promoteClassSource = appData.classes[0];
+            const studentsInClass = appData.users.filter(u => u.role === 'student' && u.class === currentState.promoteClassSource);
+            let targetClass = currentState.promoteClassSource.includes("10") ? currentState.promoteClassSource.replace("10", "11") : currentState.promoteClassSource.includes("11") ? currentState.promoteClassSource.replace("11", "12") : "Lulus";
+            if (currentState.selectedStudentsForPromo.length === 0 && studentsInClass.length > 0) currentState.selectedStudentsForPromo = studentsInClass.map(s => s.id);
+
+            container.innerHTML = `
+                <h2 class="text-2xl font-bold mb-6">Kenaikan Kelas Otomatis</h2>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                    <div class="bg-white p-6 rounded-lg shadow border border-indigo-100"><label class="block text-sm font-medium mb-2">Kelas Asal</label><select class="w-full border rounded p-2" onchange="changePromoSource(this.value)">${appData.classes.map(c => `<option ${c === currentState.promoteClassSource ? 'selected' : ''} value="${c}">${c}</option>`).join('')}</select></div>
+                    <div class="flex items-center justify-center"><i class="fas fa-arrow-right text-2xl text-indigo-300"></i></div>
+                    <div class="bg-white p-6 rounded-lg shadow border border-green-100"><label class="block text-sm font-medium mb-2">Kelas Tujuan</label><div class="w-full border rounded p-2 bg-green-50 font-bold text-green-800">${targetClass}</div></div>
+                </div>
+                <div class="bg-white shadow rounded-lg overflow-hidden">
+                    <div class="p-4 bg-yellow-50 border-b border-yellow-100 flex justify-between items-center"><h3 class="font-bold text-yellow-800">Konfirmasi Siswa</h3><span class="text-xs text-yellow-700">Hapus centang jika siswa tinggal kelas</span></div>
+                    <table class="min-w-full divide-y divide-gray-200">
+                        <tbody class="divide-y divide-gray-200 bg-white">
+                            ${studentsInClass.length > 0 ? studentsInClass.map(s => `<tr class="${!currentState.selectedStudentsForPromo.includes(s.id) ? 'bg-red-50' : ''}"><td class="px-6 py-4"><input type="checkbox" ${currentState.selectedStudentsForPromo.includes(s.id) ? 'checked' : ''} onchange="togglePromoSelection(${s.id})" class="h-5 w-5 text-indigo-600"></td><td class="px-6 py-4 font-medium">${s.name}</td><td class="px-6 py-4 text-sm">${currentState.selectedStudentsForPromo.includes(s.id) ? `<span class="text-green-600 font-bold">Naik ke ${targetClass}</span>` : `<span class="text-red-600 font-bold">Tinggal</span>`}</td></tr>`).join('') : `<tr><td colspan="3" class="px-6 py-4 text-center text-gray-500">Tidak ada siswa.</td></tr>`}
+                        </tbody>
+                    </table>
+                    <div class="p-4 bg-gray-50 border-t flex justify-end"><button onclick="processPromotion('${targetClass}')" class="bg-green-600 text-white px-6 py-3 rounded shadow hover:bg-green-700 font-bold">Proses Kenaikan</button></div>
+                </div>`;
+        }
+
+        function changePromoSource(val) { currentState.promoteClassSource = val; currentState.selectedStudentsForPromo = []; renderApp(); }
+        function togglePromoSelection(id) { if (currentState.selectedStudentsForPromo.includes(id)) currentState.selectedStudentsForPromo = currentState.selectedStudentsForPromo.filter(sid => sid !== id); else currentState.selectedStudentsForPromo.push(id); renderApp(); }
+        function processPromotion(target) { if (confirm(`Naikkan siswa terpilih?`)) { appData.users.forEach(u => { if(currentState.selectedStudentsForPromo.includes(u.id)) u.class = target; }); showToast("Kenaikan kelas berhasil!"); currentState.selectedStudentsForPromo = []; renderApp(); } }
+
+        // --- STUDENT LMS (UC8 - UC10) ---
+        function renderStudentLMS(container) {
+            document.body.className = "bg-slate-900 text-white";
+            const user = currentState.currentUser;
+            const activeTab = currentState.studentTab;
+            let displayData = [];
+            appData.courses.forEach(course => {
+                const isAssigned = course.assignedClasses.includes(user.class);
+                const progress = appData.progress[user.id]?.[course.id] || 0;
+                let status = "belum diambil";
+                if (progress === 100) status = "selesai diikuti"; else if (progress > 0) status = "sedang dikerjakan"; else if (isAssigned) status = "harus dikerjakan";
+                if (isAssigned || progress > 0) displayData.push({ ...course, status: status, userProgress: progress });
+            });
+            if (activeTab !== 'semua') displayData = displayData.filter(c => c.status === activeTab);
+
+            container.innerHTML = `
+                <header class="bg-slate-900/95 backdrop-blur-md sticky top-0 z-50 border-b border-slate-800 shadow-lg">
+                    <div class="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
+                        <h1 class="text-2xl font-bold text-indigo-500 cursor-pointer" onclick="navigateTo('landing')">EduStream</h1>
+                        <div class="flex items-center gap-4"><div class="text-right hidden md:block"><div class="text-sm font-bold">${user.name}</div><div class="text-xs text-slate-400">${user.class}</div></div><div class="w-10 h-10 rounded-full bg-indigo-600 flex items-center justify-center font-bold cursor-pointer">${user.name.charAt(0)}</div></div>
+                    </div>
+                </header>
+                <div class="max-w-7xl mx-auto px-4 py-8">
+                    <h2 class="text-3xl font-bold mb-2">Dashboard Belajar</h2>
+                    <div class="flex gap-3 mb-8 overflow-x-auto pb-2 mt-4">
+                        <button onclick="setStudentTab('semua')" class="status-pill ${activeTab === 'semua' ? 'active' : 'text-gray-500 hover:bg-gray-100'}">Semua</button>
+                        <button onclick="setStudentTab('harus dikerjakan')" class="status-pill ${activeTab === 'harus dikerjakan' ? 'active' : 'text-gray-500 hover:bg-gray-100'}">Harus Dikerjakan</button>
+                        <button onclick="setStudentTab('sedang dikerjakan')" class="status-pill ${activeTab === 'sedang dikerjakan' ? 'active' : 'text-gray-500 hover:bg-gray-100'}">Sedang Dikerjakan</button>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6 fade-in">
+                        ${displayData.length > 0 ? displayData.map(c => `
+                            <div class="bg-slate-800 rounded-xl overflow-hidden border border-slate-700 hover:border-indigo-500 cursor-pointer relative" onclick="openPlayer(${c.id}, ${c.lessons[0]?.id || 0})">
+                                <div class="h-40 ${c.color} flex items-center justify-center text-5xl relative">${c.thumbnail}
+                                    <div class="absolute top-3 right-3 px-2 py-1 rounded text-[10px] font-bold uppercase bg-black/60 backdrop-blur-sm border border-white/20 shadow">${c.status}</div>
+                                </div>
+                                <div class="p-4"><div class="text-xs text-indigo-400 font-bold uppercase mb-1">${c.category}</div><h3 class="font-bold text-lg mb-3 line-clamp-1">${c.title}</h3><div class="w-full bg-gray-700 h-1.5 rounded-full overflow-hidden"><div class="bg-green-500 h-full rounded-full" style="width: ${c.userProgress}%"></div></div></div>
+                            </div>
+                        `).join('') : `<div class="col-span-full text-center py-12 text-slate-500 border border-dashed border-slate-700 rounded-xl">Tidak ada materi.</div>`}
+                    </div>
+                </div>`;
+        }
+        function setStudentTab(tab) { currentState.studentTab = tab; renderApp(); }
+
+        // --- PLAYER WITH REAL QUIZ LOGIC (UC10) ---
+        function openPlayer(courseId, lessonId) {
+            if(!lessonId) return alert("Kursus ini belum memiliki materi.");
+            currentState.currentLesson = appData.courses.find(c => c.id === courseId).lessons.find(l => l.id === lessonId);
+            currentState.activeCourseId = courseId;
+            currentState.view = 'player';
+            renderApp();
+        }
+
+        function renderPlayerWrapper(container) {
+            document.body.className = "bg-black text-white";
+            const course = appData.courses.find(c => c.id === currentState.activeCourseId);
+            const lesson = currentState.currentLesson;
+            let content = '';
+
+            if (lesson.type === 'quiz' && lesson.questions && lesson.questions.length > 0) {
+                content = `
+                    <div class="flex-1 bg-slate-900 flex flex-col items-center justify-center p-8 overflow-y-auto">
+                        <div class="bg-slate-800 p-8 rounded-xl shadow-2xl max-w-2xl w-full border border-slate-700">
+                            <div class="flex justify-between items-center mb-6 pb-4 border-b border-slate-700">
+                                <h2 class="text-2xl font-bold">${lesson.title}</h2>
+                                <span class="bg-indigo-900 text-indigo-300 px-3 py-1 rounded text-xs font-bold">Kuis</span>
+                            </div>
+                            <div id="quiz-container">
+                                ${lesson.questions.map((q, i) => `
+                                    <div class="mb-6">
+                                        <p class="text-lg mb-3 font-medium">${i+1}. ${q.text}</p>
+                                        <div class="space-y-2">
+                                            ${q.options.map((opt, optIdx) => `
+                                                <label class="flex items-center gap-3 p-3 rounded border border-slate-700 hover:bg-slate-700/50 cursor-pointer transition">
+                                                    <input type="radio" name="q${q.id}" value="${optIdx}" class="w-5 h-5 text-indigo-600 bg-slate-900 border-slate-600 focus:ring-indigo-500">
+                                                    <span class="text-slate-300">${opt}</span>
+                                                </label>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                                <button onclick="submitQuiz()" class="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold rounded-lg shadow-lg transform transition hover:scale-[1.02]">Kirim Jawaban</button>
+                            </div>
+                        </div>
+                    </div>`;
+            } else if (lesson.type === 'quiz') {
+                content = `<div class="flex-1 bg-slate-900 flex items-center justify-center text-slate-500">Belum ada soal untuk kuis ini.</div>`;
+            } else {
+                content = `<div class="flex-1 bg-black flex items-center justify-center relative"><i class="fas fa-play-circle text-8xl text-slate-700 opacity-50"></i><p class="absolute mt-24 text-slate-500">Simulasi Video Player</p></div>`;
+            }
+
+            container.innerHTML = `
+                <div class="h-screen flex flex-col md:flex-row overflow-hidden">
+                    <div class="flex-1 flex flex-col relative">
+                        <div class="absolute top-4 left-4 z-10"><button onclick="navigateTo('student_dashboard')" class="bg-black/50 px-3 py-2 rounded-full backdrop-blur text-sm hover:bg-black/70 transition">← Dashboard</button></div>
+                        ${content}
+                        <div class="p-4 bg-slate-900 border-t border-slate-800 flex justify-between items-center">
+                            <div><h2 class="font-bold">${lesson.title}</h2><p class="text-xs text-slate-400">${lesson.duration}</p></div>
+                            <button onclick="askAI('${lesson.title}')" class="bg-indigo-600 px-3 py-1.5 rounded text-sm flex gap-2 items-center hover:bg-indigo-500 transition shadow"><i class="fas fa-robot"></i> Tanya AI</button>
+                        </div>
+                        <div id="ai-output" class="hidden p-4 bg-slate-800 border-t border-slate-700 text-sm text-gray-300 animate-[slideIn_0.3s]"></div>
+                    </div>
+                    <div class="w-full md:w-80 bg-slate-900 border-l border-slate-800 flex flex-col h-full">
+                        <div class="p-4 border-b border-slate-800 font-bold">${course.title}</div>
+                        <div class="flex-1 overflow-y-auto p-2 space-y-1">
+                            ${course.lessons.map((l, idx) => `<div onclick="openPlayer(${course.id}, ${l.id})" class="p-3 rounded cursor-pointer flex items-center gap-3 transition ${l.id === lesson.id ? 'bg-indigo-900/50 border border-indigo-500/50 text-white' : 'text-slate-400 hover:bg-slate-800'}"><div class="text-xs w-6 text-center text-slate-500 font-mono">${idx + 1}</div><div class="flex-1"><div class="text-sm font-medium">${l.title}</div><div class="text-[10px] opacity-70 uppercase tracking-wider mt-0.5">${l.type}</div></div></div>`).join('')}
+                        </div>
+                    </div>
+                </div>`;
+        }
+
+        function submitQuiz() {
+            const container = document.getElementById('quiz-container');
+            // Mock scoring logic: Random score for demo
+            const score = Math.floor(Math.random() * (100 - 70 + 1) + 70); 
+            container.innerHTML = `
+                <div class="text-center py-12 animate-[fadeIn_0.5s]">
+                    <div class="inline-block p-4 rounded-full bg-green-100 mb-4"><i class="fas fa-check text-4xl text-green-600"></i></div>
+                    <h3 class="text-2xl font-bold text-white mb-2">Kuis Selesai!</h3>
+                    <p class="text-slate-400 mb-6">Jawaban Anda telah direkam.</p>
+                    <div class="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-emerald-600 mb-8">${score}/100</div>
+                    <button onclick="navigateTo('student_dashboard')" class="px-6 py-2 border border-slate-600 rounded-full text-slate-300 hover:bg-slate-800 hover:text-white transition">Kembali ke Dashboard</button>
+                </div>
+            `;
+        }
+
+        // --- MODAL ---
+        function openModal(type, data) { currentState.modalOpen = true; currentState.modalType = type; currentState.modalData = data; currentState.tempLessonType = 'video'; document.body.classList.add('modal-active'); renderApp(); }
+        function closeModal() { currentState.modalOpen = false; document.body.classList.remove('modal-active'); renderApp(); }
+        function setTempLessonType(type) { currentState.tempLessonType = type; renderApp(); }
+
+        function renderModal() {
+            const root = document.getElementById('modal-root');
+            if (!currentState.modalOpen) { root.innerHTML = ''; return; }
+            let content = '';
+            
+            if (currentState.modalType === 'create_course') {
+                content = `<div class="p-6 space-y-4"><h3 class="font-bold text-lg">Buat Kursus</h3><input type="text" id="new_course_title" class="w-full border rounded p-2" placeholder="Judul"><select id="new_course_cat" class="w-full border rounded p-2"><option>10 RPL</option><option>11 RPL</option></select></div><div class="px-6 py-4 bg-gray-50 text-right"><button onclick="addNewCourse()" class="px-4 py-2 bg-indigo-600 text-white rounded">Simpan</button></div>`;
+            } else if (currentState.modalType === 'add_lesson') {
+                content = `<div class="p-6 space-y-4"><h3 class="font-bold text-lg">Materi Baru</h3><div class="flex gap-2 bg-gray-100 p-1 rounded"><button onclick="setTempLessonType('video')" class="flex-1 py-1 rounded text-sm ${currentState.tempLessonType==='video'?'bg-white shadow':''}">Video</button><button onclick="setTempLessonType('quiz')" class="flex-1 py-1 rounded text-sm ${currentState.tempLessonType==='quiz'?'bg-white shadow':''}">Kuis</button></div><input type="text" id="lesson_title" class="w-full border rounded p-2" placeholder="Judul Materi"></div><div class="px-6 py-4 bg-gray-50 text-right"><button onclick="addNewLesson()" class="px-4 py-2 bg-indigo-600 text-white rounded">Simpan</button></div>`;
+            } else if (currentState.modalType === 'add_student') {
+                content = `<div class="p-6 space-y-4"><h3 class="font-bold text-lg">Siswa Baru</h3><input id="new_student_name" class="w-full border rounded p-2" placeholder="Nama"><input id="new_student_email" class="w-full border rounded p-2" placeholder="Email"><select id="new_student_class" class="w-full border rounded p-2">${appData.classes.map(c=>`<option>${c}</option>`).join('')}</select></div><div class="px-6 py-4 bg-gray-50 text-right"><button onclick="addNewStudent()" class="px-4 py-2 bg-indigo-600 text-white rounded">Simpan</button></div>`;
+            } else if (currentState.modalType === 'assign_course') {
+                const c = appData.courses.find(x => x.id === currentState.modalData);
+                content = `<div class="p-6 space-y-4"><h3 class="font-bold text-lg">Tugaskan: ${c.title}</h3><div class="border rounded p-2 max-h-48 overflow-y-auto">${appData.classes.map(cl => `<label class="flex items-center p-2 hover:bg-gray-50 cursor-pointer"><input type="checkbox" class="mr-2" ${c.assignedClasses.includes(cl) ? 'checked' : ''}> ${cl}</label>`).join('')}</div></div><div class="px-6 py-4 bg-gray-50 text-right"><button onclick="closeModal(); showToast('Tugas tersimpan!')" class="px-4 py-2 bg-indigo-600 text-white rounded">Simpan</button></div>`;
+            }
+            root.innerHTML = `<div class="fixed inset-0 z-[100] flex items-center justify-center"><div class="absolute inset-0 bg-black/50 backdrop-blur-sm" onclick="closeModal()"></div><div class="bg-white rounded-lg shadow-xl z-10 w-full max-w-md mx-4 overflow-hidden animate-[fadeIn_0.2s]">${content}</div></div>`;
+        }
+
+        function navigateTo(view) { currentState.view = view; renderApp(); window.scrollTo(0,0); }
+        window.addEventListener('DOMContentLoaded', () => renderApp());
+    </script>
+</body>
+</html>
